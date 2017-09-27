@@ -13,12 +13,12 @@ import os
 import sys
 from functools import reduce
 
-keyword=("auto","break","case","char","const" ,"continue" ,"default" ,"do",
+KEY=("auto","break","case","char","const" ,"continue" ,"default" ,"do",
          "double,","else","enum" ,"extern","float","for","goto","if",
          "int" ,"long", "register" ,"return", "short", "signed","sizeof","static",
          "struct","switch","typedef","union","unsigned","void","volatile","while")#关键字
-delimiter=('(',')','[',']','{','}',';',',',' ','\'','"')#分隔符
-operetor=('+','-','*','/','%','>','<','=','&','^','|','~','?',':','.','!')#操作符
+SEP=('(',')','[',']','{','}',';',',',' ','\'','"')#分隔符
+OP=('+','-','*','/','%','>','<','=','&','^','|','~','?',':','.','!')#操作符
 
 
 
@@ -37,37 +37,37 @@ def reader(filename):#读取
     finally:file.close()
     pass
 
-def skip(prog,flag):#跳过无效字符
-    start=flag
-    while prog[start]!='\n' and not prog[start].isspace() and not prog[flag]\
-            in delimiter and not prog[start] in operetor:
-        start += 1
-    return start
+def skip(prog,flag,length):#跳过无效字符
+    while flag<length and prog[flag]!='\n' and not prog[flag].isspace() and not prog[flag]\
+            in SEP and not prog[flag] in OP:
+        flag += 1
+    return flag
 
 
 def isdeli(ch) ->bool:#是否为（可跳过字符）或（不是分界符）
     return ch!='\n' and not ch.isspace() \
-           and not ch in delimiter and not ch in operetor
+           and not ch in SEP and not ch in OP
 
 def next(prog ,flag,ignore=False):
     #判断传入串flag位置后一个属性,以判断操作符是否二义性
     #ignore是否忽略空格
+    length = len(prog)  # 字符长度
     start=flag+1
     if ignore:
-        while prog[start]==" " or prog[start].isspace():
+        while flag<length and (prog[start]==" " or prog[start].isspace()):
             start+=1
-    if prog[start] in operetor:
-        return "OPERETOR"
-    elif prog[start] in delimiter:
-        return "DELIMITER"
+    if prog[start] in OP:
+        return "OP"
+    elif prog[start] in SEP:
+        return "SEP"
     elif prog[start].isalpha() or prog[start] == r'_':  # 标识符和关键字
         tmp = start
-        while prog[start].isalnum() or prog[start] == r'_': start += 1
+        while flag<length and (prog[start].isalnum() or prog[start] == r'_'): start += 1
         fragment = str(reduce(lambda x, y: x + y, prog[tmp:start]))
-        if fragment in keyword:  # 判断为关键字
-            return "KEYWORD"
+        if fragment in KEY:  # 判断为关键字
+            return "KEY"
         else:  # 判断为标识符
-            return "IDENTIFY"
+            return "ID"
     elif prog[start].isdigit():
         return "DIGIT"
         pass
@@ -79,34 +79,36 @@ def analyse(prog,befspace=0,flag=0,line=1):
     while flag<length:#从左向右处理
         if prog[flag]=="#":#不考虑头文件及预编译
             flag+=1
-            while prog[flag]!='\n' :#and prog[flag]!='\\'
+            while flag<length and prog[flag]!='\n':#and prog[flag]!='\\'
                 flag+=1
             print("< #,ignore >", end=' ')
         elif prog[flag]=='\n':#换行符结束
             line += 1  # 行数自增
+            flag += 1  # 
             if flag-befspace>1:
                 print()
                 if (flag < length):
                     print("LINE " + str(line) + " :", end=' ')
             befspace=flag#上一行位置变，用于查错显示
-            flag+=1#
         elif prog[flag].isspace():#空字符跳过
             flag+=1
         elif prog[flag].isalpha() or prog[flag]==r'_':#标识符和关键字
             tmp=flag
-            while prog[flag].isalnum() or prog[flag]==r'_':flag+=1
+            while flag<length and (prog[flag].isalnum() or prog[flag]==r'_'):flag+=1
             fragment=str(reduce(lambda x,y:x+y,prog[tmp:flag]))
-            if fragment in keyword:#判断为关键字
-                print("< "+fragment+",- >",end=' ')
+            if fragment in KEY:#判断为关键字
+                print("< KEY,"+fragment+" >",end=' ')
             else:#判断为标识符
-                print("< IDENTIFY,"+fragment+" >",end=' ')
+                print("< ID,"+fragment+" >",end=' ')
         elif prog[flag].isdigit():#判断数字常量
             if prog[flag] == '0':#当开始字符为0
-                if prog[flag+1].lower()=='x':#0x开头为十六进制
+                if flag<length and prog[flag+1].lower()=='x':#0x开头为十六进制
                     flag+=2
                     tmp=flag
-                    while prog[flag].isdigit() or \
-                            (prog[flag].lower()>='a' and prog[flag].lower()<='f'): #判断十六进制
+                    while flag<length and \
+                            (prog[flag].isdigit() or (prog[flag].lower()>='a'
+                                                      and prog[flag].lower()<='f')):
+                        #判断十六进制
                         flag+=1
                     numch=str(reduce(lambda x,y:x+y,prog[tmp:flag]))#拼接十六进制数字
                     num = str(int(numch, 16))#拼接为十进制数字
@@ -115,14 +117,14 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             if prog[flag + 2].isalnum():#0x23uls报错，并跳过
                                 print("<ERROR,INT_UN_LONG_DEFINE,LINE "+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                 flag += 3
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                             else:
                                 print("< INT_UN_LONG,"+num+" >",end=' ')
                                 flag+=2
                         elif prog[flag+1].isalnum():#0x23u2出错
                             print("<ERROR,INT_UN_DEFINE,LINE "+str(line)+" "+str(flag-befspace)+" >", end=' ')
                             flag += 1
-                            flag=skip(prog,flag)
+                            flag=skip(prog,flag,length)
                         else:
                             print("< INT_UN,"+num+" >",end=' ')#
                             flag+=1
@@ -131,21 +133,21 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             if prog[flag + 2].isalnum():
                                 print("< ERROR,INT_UN_LONG_DEFINE ,LINE "+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                 flag += 3
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                             else:
                                 print("< INT_UN_LONG,"+num+" >",end=' ')
                                 flag+=2
                         elif prog[flag+1].isalnum():
                             print("< ERROR,INT_LONG_DEFINE,LINE "+str(line)+str(flag-befspace)+" >", end=' ')
                             flag += 1
-                            flag = skip(prog, flag)
+                            flag = skip(prog, flag,length)
                         else:
                             print("< INT_LONG,"+num+" >",end=' ')
                             flag+=1
                     elif prog[flag].isalpha():#十六进制后接字符则报错
                         print("< ERROR,INT_DEFINE,LINE "+str(line)+" "+str(flag-befspace)+" >",end=' ')
                         flag+=1
-                        flag = skip(prog, flag)
+                        flag = skip(prog, flag,length)
                     else:
                         print("< INT," + num + " >", end=' ')
                     pass
@@ -155,7 +157,9 @@ def analyse(prog,befspace=0,flag=0,line=1):
                     haspro=False#是否有+、-、e
                     hasneg=False
                     haseE=False
-                    while prog[flag].isdigit() or prog[flag].lower()=='e' or prog[flag]=='-' or prog[flag]=='+':
+                    while flag<length and \
+                            (prog[flag].isdigit() or prog[flag].lower()=='e'
+                             or prog[flag]=='-' or prog[flag]=='+') :
                         if (prog[flag]=='+' or prog[flag]=='-') and not haseE:break#需满足一些条件
                         elif (prog[flag] == '+' or prog[flag] == '-') and (haspro or hasneg):break
                         elif (prog[flag]=='+' or prog[flag]=='-') and haseE:
@@ -180,7 +184,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag+1- befspace) + " >",
                                   end=' ')
                             IsERROR=True
-                            flag = skip(prog, flag+2)
+                            flag = skip(prog, flag+2,length)
                         else:
                             IsFLOAT=True
                             theskip=flag+1
@@ -188,7 +192,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                         print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag-befspace) + " >",
                               end=' ')
                         IsERROR = True
-                        flag = skip(prog, flag+1)
+                        flag = skip(prog, flag+1,length)
                     if not IsERROR:
                         if (hasneg or haspro) and haseE:#有符号指数型
                             pos=(findpro if haspro>hasneg else findneg)
@@ -203,7 +207,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             else:#0.12e+报错
                                 print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                       end=' ')
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                         elif haseE and not (haspro or hasneg):#无符号指数e
                             if findeE!=flag-tmp-1:
                                 suffix = int(str(reduce(lambda x, y: x + y, befpron[findeE+1:])))
@@ -216,7 +220,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             else:
                                 print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                       end=' ')
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                             pass
                         else:#单纯的浮点数0.23
                             num=str(float(befpron))
@@ -232,7 +236,8 @@ def analyse(prog,befspace=0,flag=0,line=1):
                     haseE=False
                     haspro=False
                     hasneg=False
-                    while prog[flag].isdigit() or prog[flag].lower()=='e' or prog[flag]=='-' or prog[flag]=='+' or prog[flag]=='.':
+                    while flag<length and (prog[flag].isdigit() or prog[flag].lower()=='e' or prog[flag]=='-'
+                           or prog[flag]=='+' or prog[flag]=='.'):
                         if (prog[flag]=='+' or prog[flag]=='-') and not haseE:break#需满足的一些条件
                         elif (prog[flag] == '+' or prog[flag] == '-') and (haspro or hasneg):
                             break
@@ -263,7 +268,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag + 1 - befspace) + " >",
                                   end=' ')
                             IsERROR = True
-                            flag = skip(prog, flag + 2)
+                            flag = skip(prog, flag + 2,length)
                         else:
                             IsFLOAT = True
                             theskip = flag + 1
@@ -271,7 +276,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                         print("< ERROR,NUM_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                               end=' ')
                         IsERROR = True
-                        flag = skip(prog, flag + 1)
+                        flag = skip(prog, flag + 1,length)
                     if not IsERROR:
                         if haseE and (haspro or hasneg):
                             pos = (findpro if haspro > hasneg else findneg)
@@ -286,7 +291,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             else:  # 0.12e+报错
                                 print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                       end=' ')
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                         elif haseE :
                             if haseE!=flag-tmp-1:
                                 suffix = int(str(reduce(lambda x, y: x + y, befpron[findeE + 1:])))
@@ -298,7 +303,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                             else:
                                 print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                       end=' ')
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                         elif haspoint:
                             if IsFLOAT:
                                 print("< FLOAT," + str(float(befpron)) + " >", end=' ')
@@ -313,7 +318,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                                 print("< ERROR,OCTAL_OUTOFRANG,LINE"+str(line)+" "+str(flag-befspace)+" >",end=' ')
                             else:
                                 print("< INT,"+str(int(befpron,8))+">" ,end=' ')
-                elif prog[flag+1] in operetor or prog[flag+1] in delimiter:#简单的0
+                elif prog[flag+1] in OP or prog[flag+1] in SEP:#简单的0
                     print("< INT,0 >",end=' ')
                     flag+=1
                 else:#其他字母或符号抛异常
@@ -325,8 +330,8 @@ def analyse(prog,befspace=0,flag=0,line=1):
                 haspro = False
                 hasneg = False
                 tmp=flag
-                while prog[flag].isdigit() or prog[flag].lower() == 'e' or prog[flag] == '-' or prog[flag] == '+' or \
-                                prog[flag] == '.':
+                while flag<length and (prog[flag].isdigit() or prog[flag].lower() == 'e' or prog[flag] == '-'
+                       or prog[flag] == '+' or prog[flag] == '.'):
                     if (prog[flag] == '+' or prog[flag] == '-') and not haseE:break
                     elif (prog[flag] == '+' or prog[flag] == '-') and (haspro or hasneg):break
                     elif (prog[flag] == '+' or prog[flag] == '-') and haseE:
@@ -362,7 +367,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                         print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag + 1 - befspace) + " >",
                               end=' ')
                         IsERROR = True
-                        flag = skip(prog, flag + 2)
+                        flag = skip(prog, flag + 2,length)
                     else:
                         IsFLOAT = True
                         theskip = flag + 1
@@ -370,7 +375,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                     print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                           end=' ')
                     IsERROR = True
-                    flag = skip(prog, flag + 1)
+                    flag = skip(prog, flag + 1,length)
                 if not IsERROR:
                     if haseE and (haspro or hasneg):#有符号指数型
                         pos = (findpro if haspro > hasneg else findneg)
@@ -386,7 +391,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                         else:  # 0.12e+报错
                             print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                   end=' ')
-                            flag = skip(prog, flag)
+                            flag = skip(prog, flag,length)
                     elif haseE :#指数型浮点数
                         if haseE != flag - tmp - 1:
                             suffix = int(str(reduce(lambda x, y: x + y, befpron[findeE + 1:])))
@@ -399,7 +404,7 @@ def analyse(prog,befspace=0,flag=0,line=1):
                         else:
                             print("< ERROR,FLOAT_DEFINE,LINE " + str(line) + " " + str(flag - befspace) + " >",
                                   end=' ')
-                            flag = skip(prog, flag)
+                            flag = skip(prog, flag,length)
                     elif haspoint:#小数点浮点数
                         if IsFLOAT:
                             print("< FLOAT," + str(float(befpron)) + " >", end=' ')
@@ -413,14 +418,14 @@ def analyse(prog,befspace=0,flag=0,line=1):
                                 if prog[flag + 2].isalnum():
                                     print("<ERROR,INT_UN_LONG_DEFINE,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                     flag += 3
-                                    flag = skip(prog, flag)
+                                    flag = skip(prog, flag,length)
                                 else:
                                     print("<INT_UN_LONG," + num + ">", end=' ')
                                     flag += 2
                             elif prog[flag + 1].isalnum():
                                 print("< ERROR,INT_LONG_DEFINE ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                 flag += 1
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                             else:
                                 print("<INT_UN," + num + ">", end=' ')
                         elif prog[flag].lower() == 'l':
@@ -428,19 +433,19 @@ def analyse(prog,befspace=0,flag=0,line=1):
                                 if prog[flag + 2].isalnum():
                                     print("< ERROR,INT_UN_LONG_DEFINE ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                     flag += 3
-                                    flag = skip(prog, flag)
+                                    flag = skip(prog, flag,length)
                                 else:
                                     print("< INT_UN_LONG," + num + ">", end=' ')
                                     flag += 2
                             elif prog[flag + 1].isalnum():
                                 print("< ERROR,INT_LONG_DEFINE ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                                 flag += 1
-                                flag = skip(prog, flag)
+                                flag = skip(prog, flag,length)
                             else:
                                 print("< INT_LONG," + num + " >", end=' ')
                         elif prog[flag].isalpha():
                             print("< ERROR,INT_DEFINE,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
-                            flag = skip(prog, flag)
+                            flag = skip(prog, flag,length)
                         else:
                             print("< INT," + num + " >", end=' ')
         elif prog[flag] == '\'':#字符
@@ -449,14 +454,14 @@ def analyse(prog,befspace=0,flag=0,line=1):
                     if prog[flag + 2].isalnum():
                         print("< ERROR,CHAR_DEFIEND ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                         flag += 3
-                        flag = skip(prog, flag)
+                        flag = skip(prog, flag,length)
                     else:
                         print("< CHAR,'' >", end=' ')
                         flag += 2
                 elif prog[flag + 2] != '\'':
                     print("< ERROR_MULTI,CHAR_DEFIEND ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                     flag += 3
-                    while isdeli(prog[flag]) or prog[flag]=='\'':
+                    while flag<length and (isdeli(prog[flag]) or prog[flag]=='\''):
                         flag += 1
                 else:
                     print("< CHAR,'" + prog[flag + 1] + "' >", end=' ')
@@ -470,34 +475,34 @@ def analyse(prog,befspace=0,flag=0,line=1):
                 else:
                     print("< ERROR_MULTI,CHAR_DEFIEND ,LINE"+str(line)+" "+str(flag-befspace)+" >", end=' ')
                     flag += 3
-                    flag = skip(prog, flag)
+                    flag = skip(prog, flag,length)
         elif prog[flag]=='"':#字符串
             flag+=1
             tmp = flag
-            while flag<length and not prog[flag]=='"':
+            while flag<length and (flag<length and not prog[flag]=='"'):
                 if prog[flag]=='\n':
                     befspace=flag
                     line+=1
                 flag+=1
             if flag<length:
-                flag+=1
                 print('< STRING,"'+str(reduce(lambda x,y:x+y,prog[tmp:flag]))+'" >',end=' ')
+                flag += 1
             else:
                 print("< ERROR,NOMATCH\",LINE " + str(line) + " " + str(flag - befspace) + " >",end=' ')
 
-        elif prog[flag] in delimiter or prog[flag] == ':' or prog[flag] == '?' or prog[flag] == '~':
-            #判断不需要分情况的分隔符和操作符
+        elif prog[flag] in SEP :
+            #判断不需要分情况的分隔符
             if prog[flag]!='\\':
-                print("< "+prog[flag]+",- >" ,end=' ')
+                print("< "+prog[flag]+",SEP >" ,end=' ')
                 flag+=1
             else:
                 pass
-        elif prog[flag] in operetor :
+        elif prog[flag] in OP :
             if prog[flag] == '*':#分情况 乘 指针 乘赋值
                 if prog[flag+1]=='=':
-                    print("< *=,- >",end=' ')
+                    print("< *=,OP >",end=' ')
                     flag+=2
-                elif next(prog,flag,False)=='IDENTIFY':
+                elif next(prog,flag,False)=='ID':
                     print("< *,POINTER OR MUL >",end=' ')
                     flag+=1
                 else:
@@ -508,10 +513,10 @@ def analyse(prog,befspace=0,flag=0,line=1):
                 if prog[flag + 1] == '/':
                     print("< //,ignore >", end=' ')
                     flag+=2
-                    while prog[flag]!='\n':
+                    while flag<length and prog[flag]!='\n':
                         flag+=1
                 elif prog[flag + 1] == '=':
-                    print("< /=,- >", end=' ')
+                    print("< /=,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '*':
                     flag+=2
@@ -527,125 +532,125 @@ def analyse(prog,befspace=0,flag=0,line=1):
                     else:
                         print("< ERROR,NOMATCH/*,LINE "+str(line)+" "+str(flag-befspace)+" >")
                 else:
-                    print("< /,- >", end=' ')
+                    print("< /,OP >", end=' ')
                     flag += 1
             elif prog[flag] == '-':#自减 减赋值 指针 减
                 if prog[flag + 1] == '-':
-                    print("< --,- >", end=' ')
+                    print("< --,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< -=,- >", end=' ')
+                    print("< -=,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '>':
-                    print("< ->,- >", end=' ')
+                    print("< ->,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< -,- >", end=' ')
+                    print("< -,OP >", end=' ')
                     flag += 1
                 pass
             elif prog[flag] == '+':#自增 加赋值 加
                 if prog[flag + 1] == '+':
-                    print("< ++,- >", end=' ')
+                    print("< ++,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< +=,- >", end=' ')
+                    print("< +=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< +,- >", end=' ')
+                    print("< +,OP >", end=' ')
                     flag += 1
                 pass
             elif prog[flag] == '%':#求余 求余赋值
                 if prog[flag + 1] == '=':
-                    print("< %=,- >", end=' ')
+                    print("< %=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< %,- >", end=' ')
+                    print("< %,OP >", end=' ')
                     flag += 1
                 pass
             elif prog[flag] == '=':#等于判断 赋值
                 if prog[flag + 1] == '=':
-                    print("< ==,- >", end=' ')
+                    print("< ==,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< =.- >", end=' ')
+                    print("< =.OP >", end=' ')
                     flag += 1
                 pass
             elif prog[flag] == '>':#右移 右移赋值 大于 大于等于
                 if prog[flag + 1] == '>':
                     if prog[flag + 2] == '=':
-                        print("< >>=,- >", end=' ')
+                        print("< >>=,OP >", end=' ')
                         flag += 3
                     else:
-                        print("< >>,- >", end=' ')
+                        print("< >>,OP >", end=' ')
                         flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< >=,- >", end=' ')
+                    print("< >=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< >,- >", end=' ')
+                    print("< >,OP >", end=' ')
                     flag += 1
                 pass
             elif prog[flag] == '<':#左移 左移赋值 小于 小于等于
                 if prog[flag + 1] == '<':
                     if prog[flag + 2] == '=':
-                        print("< <<=,- >", end=' ')
+                        print("< <<=,OP >", end=' ')
                         flag += 3
                     else:
                         print("< <<,- >", end=' ')
                         flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< <=,- >", end=' ')
+                    print("< <=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< <,- >", end=' ')
+                    print("< <,OP >", end=' ')
                     flag+=1
                 pass
             elif prog[flag] == '&':#按位与 按位与赋值 逻辑与 取址
                 if prog[flag + 1] == '&':
-                    print("< &&,- >", end=' ')
+                    print("< &&,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< &=,- >", end=' ')
+                    print("< &=,OP >", end=' ')
                     flag += 2
-                elif next(prog,flag,False)=='IDENTIFY':
+                elif next(prog,flag,False)=='ID':
                     print("< &,Address OR AND >", end=' ')
                     flag += 1
                 else:
-                    print("< &,- >", end=' ')
+                    print("< &,OP >", end=' ')
                     flag += 1
             elif prog[flag] == '!':#按位与 按位与赋值 逻辑与 取址
                 if prog[flag + 1] == '=':
-                    print("< !=,- >", end=' ')
+                    print("< !=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< !,- >", end=' ')
+                    print("< !,OP >", end=' ')
                     flag += 1
             elif prog[flag] == '|':#按位或 按位或赋值 逻辑或
                 if prog[flag + 1] == '|':
-                    print("< ||,- >", end=' ')
+                    print("< ||,OP >", end=' ')
                     flag += 2
                 elif prog[flag + 1] == '=':
-                    print("< |=,- >", end=' ')
+                    print("< |=,OP >", end=' ')
                     flag += 2
                 else:
-                    print("< |,- >", end=' ')
+                    print("< |,OP >", end=' ')
                     flag += 1
             elif prog[flag] == '^':#按位异或 按位异或赋值
                 if prog[flag + 1] == '=':
-                    print("< ^=,- >", end=' ')
+                    print("< ^=,OP >", end=' ')
                     flag += 1
                 else:
-                    print("< ^,- >", end=' ')
+                    print("< ^,OP >", end=' ')
                     flag += 1
                 pass
-            elif prog[flag] == '.':
-                print("< .,- >",end=' ')
+            elif prog[flag] == '.' or prog[flag] == ':' or prog[flag] == '?' or prog[flag] == '~':
+                print("< .,OP >",end=' ')
                 flag+=1
         else :
             print("< ERROR,UNDEFIEND " + prog[flag] + " ,LINE "+str(line)
                   +" "+str(flag-befspace)+">", end=' ')#不可识别的符号
             flag += 1
-            flag=skip(prog,flag)
+            flag=skip(prog,flag,length)
 
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
@@ -658,7 +663,7 @@ if __name__ == '__main__':
         test = input("请输入需要测试字符串(回车开始#结束)：")
         while test != "#":
             print("结果为：", end=' ')
-            analyse(test+'\n')
+            analyse(test+"\n")
             test = input("请输入需要测试字符串(回车开始#结束)：")
     else:
         # python3 analyzer filename分析文件
